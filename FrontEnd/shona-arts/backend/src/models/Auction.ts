@@ -18,6 +18,8 @@ const auctionSchema = new Schema(
     endTime: { type: Date, required: true },
     bidHistory: [bidHistorySchema],
     winner: { type: Schema.Types.ObjectId, ref: 'User' },
+    paymentStatus: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
+    payhereOrderId: String,
     status: { type: String, enum: ['draft', 'live', 'closed'], default: 'draft' },
   },
   { timestamps: true },

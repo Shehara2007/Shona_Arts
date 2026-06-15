@@ -1,10 +1,14 @@
 import { Bell, Camera, CheckCircle2, CreditCard, ImageUp, PackageSearch, Star, UploadCloud } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ArtworkCard } from '../../components/ArtworkCard';
+import { useToast } from '../../components/Toast';
 import { Button } from '../../components/ui/button';
 import { Card, GlassCard } from '../../components/ui/card';
 import { Input } from '../../components/ui/input';
-import { useAppSelector } from '../../hooks/redux';
+import { useAppDispatch, useAppSelector } from '../../hooks/redux';
+import { hydrateUser } from '../../redux/authSlice';
+import { createPaymentSession, fetchMyCustomOrders, fetchMyOrders, fetchNotifications, fetchRecommendations, markNotificationRead, submitPayhereSession, updateMe } from '../../services/customerApi';
+import type { Artwork, CustomOrder, Notification, Order } from '../../utils/types';
 
 function CustomerHeader({ eyebrow, title }: { eyebrow: string; title: string }) {
   return (
@@ -16,7 +20,20 @@ function CustomerHeader({ eyebrow, title }: { eyebrow: string; title: string }) 
 }
 
 export function CustomerProfile() {
-  const [avatar, setAvatar] = useState('');
+  const dispatch = useAppDispatch();
+  const user = useAppSelector((state) => state.auth.user);
+  const { showToast } = useToast();
+  const [form, setForm] = useState({ name: user?.name ?? '', email: user?.email ?? '', avatar: user?.avatar ?? '' });
+
+  useEffect(() => {
+    setForm({ name: user?.name ?? '', email: user?.email ?? '', avatar: user?.avatar ?? '' });
+  }, [user]);
+
+  const save = async () => {
+    const updated = await updateMe(form);
+    dispatch(hydrateUser(updated));
+    showToast('Profile saved');
+  };
 
   return (
     <section>
@@ -24,18 +41,18 @@ export function CustomerProfile() {
       <GlassCard className="p-6">
         <div className="grid gap-6 lg:grid-cols-[220px_1fr]">
           <label className="grid cursor-pointer place-items-center rounded-lg border border-dashed border-gallery-red bg-gallery-rose p-6 text-center dark:bg-white/10">
-            {avatar ? <img src={avatar} alt="Profile avatar" className="h-32 w-32 rounded-full object-cover" /> : <Camera className="h-12 w-12 text-gallery-red" />}
+            {form.avatar ? <img src={form.avatar} alt="Profile avatar" className="h-32 w-32 rounded-full object-cover" /> : <Camera className="h-12 w-12 text-gallery-red" />}
             <span className="mt-3 font-bold">Update profile image</span>
             <input type="file" accept="image/*" className="sr-only" onChange={(event) => {
               const file = event.target.files?.[0];
-              if (file) setAvatar(URL.createObjectURL(file));
+              if (file) setForm((current) => ({ ...current, avatar: URL.createObjectURL(file) }));
             }} />
           </label>
           <div className="grid gap-4">
-            <Input defaultValue="Shona Collector" placeholder="Full name" />
-            <Input defaultValue="collector@shonaarts.com" placeholder="Email" />
+            <Input value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="Full name" />
+            <Input value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} placeholder="Email" />
             <Input placeholder="Shipping address" />
-            <Button className="w-fit">Save profile</Button>
+            <Button className="w-fit" onClick={save}>Save profile</Button>
           </div>
         </div>
       </GlassCard>
@@ -44,30 +61,97 @@ export function CustomerProfile() {
 }
 
 export function CustomerOrders() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [customOrders, setCustomOrders] = useState<CustomOrder[]>([]);
+  const { showToast } = useToast();
   const timeline = ['Order placed', 'Payment confirmed', 'Packed', 'Shipped', 'Delivered'];
+
+  useEffect(() => {
+    void Promise.all([fetchMyOrders(), fetchMyCustomOrders()]).then(([orderData, customOrderData]) => {
+      setOrders(orderData);
+      setCustomOrders(customOrderData);
+    });
+  }, []);
+
+  const activeStep = (order: Order) => {
+    if (order.orderStatus === 'delivered') return 4;
+    if (order.orderStatus === 'shipped') return 3;
+    if (order.orderStatus === 'packed') return 2;
+    if (order.paymentStatus === 'paid') return 1;
+    return 0;
+  };
+
   return (
     <section>
       <CustomerHeader eyebrow="Orders" title="Track order history and delivery" />
       <div className="space-y-4">
-        {['#SA-1042', '#SA-1044'].map((order, index) => (
-          <Card key={order} className="p-5">
+        {orders.map((order) => (
+          <Card key={order._id} className="p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div><h2 className="text-xl font-extrabold">{order}</h2><p className="text-zinc-500">Original painting - {index ? '$760' : '$420'}</p></div>
-              <span className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 font-bold text-emerald-600"><PackageSearch className="h-4 w-4" /> {index ? 'Shipped' : 'Packed'}</span>
+              <div><h2 className="text-xl font-extrabold">#{order._id.slice(-6).toUpperCase()}</h2><p className="text-zinc-500">${order.totalPrice} - {order.items.length} items</p></div>
+              <span className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 font-bold text-emerald-600"><PackageSearch className="h-4 w-4" /> {order.orderStatus}</span>
             </div>
             <div className="mt-5 grid gap-2 md:grid-cols-5">
               {timeline.map((step, stepIndex) => (
-                <div key={step} className={`rounded-md p-3 text-sm font-bold ${stepIndex <= 2 + index ? 'bg-gallery-red text-white' : 'bg-gallery-rose text-gallery-ink dark:bg-white/10 dark:text-white'}`}>{step}</div>
+                <div key={step} className={`rounded-md p-3 text-sm font-bold ${stepIndex <= activeStep(order) ? 'bg-gallery-red text-white' : 'bg-gallery-rose text-gallery-ink dark:bg-white/10 dark:text-white'}`}>{step}</div>
               ))}
             </div>
           </Card>
         ))}
+        {customOrders.map((order) => (
+          <Card key={order._id} className="p-5">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <h2 className="text-xl font-extrabold">Custom #{order._id.slice(-6).toUpperCase()}</h2>
+                <p className="text-zinc-500">{order.artStyle} - ${order.budget}</p>
+                <p className="mt-1 text-sm text-zinc-500">Status: {order.status} - Payment: {order.paymentStatus}</p>
+              </div>
+              {order.paymentStatus === 'pending' && (
+                <Button
+                  onClick={async () => {
+                    const session = await createPaymentSession({ customOrderId: order._id });
+                    showToast('Opening PayHere sandbox checkout');
+                    submitPayhereSession(session);
+                  }}
+                >
+                  Pay custom order
+                </Button>
+              )}
+            </div>
+          </Card>
+        ))}
+        {!orders.length && !customOrders.length && <Card className="p-5 text-zinc-500">No orders yet.</Card>}
       </div>
     </section>
   );
 }
 
 export function CustomerPayments() {
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [customOrders, setCustomOrders] = useState<CustomOrder[]>([]);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    void Promise.all([fetchMyOrders(), fetchMyCustomOrders()]).then(([orderData, customOrderData]) => {
+      setOrders(orderData);
+      setCustomOrders(customOrderData);
+    });
+  }, []);
+
+  const openCheckout = async () => {
+    const pending = orders.find((order) => order.paymentStatus === 'pending');
+    const pendingCustom = customOrders.find((order) => order.paymentStatus === 'pending');
+    if (!pending && !pendingCustom) {
+      showToast('No pending payments');
+      return;
+    }
+    const session = pending
+      ? await createPaymentSession({ orderId: pending._id })
+      : await createPaymentSession({ customOrderId: pendingCustom?._id });
+    showToast('Opening PayHere sandbox checkout');
+    submitPayhereSession(session);
+  };
+
   return (
     <section>
       <CustomerHeader eyebrow="Payments" title="PayHere confirmations and history" />
@@ -76,11 +160,15 @@ export function CustomerPayments() {
           <Card key={status} className="p-5">
             <CreditCard className="mb-4 h-7 w-7 text-gallery-red" />
             <p className="text-sm font-bold text-zinc-500">{status}</p>
-            <p className="mt-2 text-3xl font-extrabold">{[4, 1, 0][index]}</p>
+            <p className="mt-2 text-3xl font-extrabold">{[
+              orders.filter((order) => order.paymentStatus === 'paid').length + customOrders.filter((order) => order.paymentStatus === 'paid').length,
+              orders.filter((order) => order.paymentStatus === 'pending').length + customOrders.filter((order) => order.paymentStatus === 'pending').length,
+              orders.filter((order) => order.paymentStatus === 'failed').length + customOrders.filter((order) => order.paymentStatus === 'failed').length,
+            ][index]}</p>
           </Card>
         ))}
       </div>
-      <Button className="mt-6">Open secure PayHere checkout</Button>
+      <Button className="mt-6" onClick={openCheckout}>Open secure PayHere checkout</Button>
     </section>
   );
 }
@@ -119,7 +207,7 @@ export function CustomerWallPreview() {
         </GlassCard>
         <div className="relative min-h-[520px] overflow-hidden rounded-lg bg-zinc-100 dark:bg-zinc-900">
           {room ? <img src={room} alt="Room preview" className="h-full w-full object-cover" /> : <div className="grid h-full place-items-center text-zinc-500"><ImageUp className="h-16 w-16 text-gallery-red" /></div>}
-          <img src={artwork.image} alt={artwork.title} className="absolute left-1/2 top-1/3 h-44 w-32 -translate-x-1/2 rounded border-8 border-white object-cover shadow-2xl" />
+          {artwork && <img src={artwork.image} alt={artwork.title} className="absolute left-1/2 top-1/3 h-44 w-32 -translate-x-1/2 rounded border-8 border-white object-cover shadow-2xl" />}
         </div>
       </div>
     </section>
@@ -128,33 +216,45 @@ export function CustomerWallPreview() {
 
 export function CustomerRecommendations() {
   const artworks = useAppSelector((state) => state.artworks.items);
+  const [recommendations, setRecommendations] = useState<Artwork[]>([]);
+
+  useEffect(() => {
+    void fetchRecommendations({ artworkId: artworks[0]?._id, style: artworks[0]?.style }).then(setRecommendations);
+  }, [artworks]);
+
   return (
     <section>
       <CustomerHeader eyebrow="AI recommendations" title="Curated based on style, wishlist, and bids" />
       <div className="grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-        {artworks.map((artwork) => <ArtworkCard key={artwork._id} artwork={artwork} />)}
+        {(recommendations.length ? recommendations : artworks).map((artwork) => <ArtworkCard key={artwork._id} artwork={artwork} />)}
       </div>
     </section>
   );
 }
 
 export function CustomerNotifications() {
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+
+  const load = async () => setNotifications(await fetchNotifications());
+
+  useEffect(() => {
+    void load();
+  }, []);
+
   return (
     <section>
       <CustomerHeader eyebrow="Notifications" title="Order, auction, and custom artwork updates" />
       <div className="space-y-3">
-        {[
-          ['Auction winner announced', 'You won the Crimson Monsoon auction.'],
-          ['Payment confirmed', 'Your PayHere payment was confirmed.'],
-          ['Custom order approved', 'Your devotional artwork request moved to in progress.'],
-        ].map(([title, message], index) => (
-          <Card key={title} className="p-5">
+        {notifications.map((notification, index) => (
+          <Card key={notification._id} className="p-5">
             <div className="flex items-start gap-3">
               {index === 0 ? <Star className="h-6 w-6 text-gallery-red" /> : index === 1 ? <CheckCircle2 className="h-6 w-6 text-emerald-500" /> : <Bell className="h-6 w-6 text-gallery-red" />}
-              <div><h2 className="font-extrabold">{title}</h2><p className="text-zinc-500">{message}</p></div>
+              <div className="flex-1"><h2 className="font-extrabold">{notification.title}</h2><p className="text-zinc-500">{notification.message}</p></div>
+              {!notification.isRead && <Button variant="secondary" onClick={async () => { await markNotificationRead(notification._id); await load(); }}>Mark read</Button>}
             </div>
           </Card>
         ))}
+        {!notifications.length && <Card className="p-5 text-zinc-500">No notifications yet.</Card>}
       </div>
     </section>
   );

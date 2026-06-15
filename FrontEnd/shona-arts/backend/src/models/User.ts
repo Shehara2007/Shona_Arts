@@ -8,6 +8,7 @@ export interface IUser {
   password: string;
   avatar: string;
   role: 'customer' | 'admin';
+  blocked: boolean;
   wishlist: mongoose.Types.ObjectId[];
   orders: mongoose.Types.ObjectId[];
   comparePassword(password: string): Promise<boolean>;
@@ -20,6 +21,7 @@ const userSchema = new Schema<IUser>(
     password: { type: String, required: true, minlength: 8, select: false },
     avatar: { type: String, default: '' },
     role: { type: String, enum: ['customer', 'admin'], default: 'customer' },
+    blocked: { type: Boolean, default: false },
     wishlist: [{ type: Schema.Types.ObjectId, ref: 'Painting' }],
     orders: [{ type: Schema.Types.ObjectId, ref: 'Order' }],
   },

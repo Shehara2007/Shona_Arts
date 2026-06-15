@@ -6,7 +6,8 @@ import { z } from 'zod';
 import { useToast } from '../components/Toast';
 import { Button } from '../components/ui/button';
 import { Input } from '../components/ui/input';
-import { api } from '../services/api';
+import { uploadImage } from '../services/api';
+import { createCustomOrder, createPaymentSession, submitPayhereSession } from '../services/customerApi';
 
 const customOrderSchema = z.object({
   artStyle: z.string().min(2, 'Choose an art style'),
@@ -20,6 +21,7 @@ type CustomOrderForm = z.output<typeof customOrderSchema>;
 export function CustomOrder() {
   const [referenceImage, setReferenceImage] = useState('');
   const [preview, setPreview] = useState('');
+  const [uploading, setUploading] = useState(false);
   const { showToast } = useToast();
   const { register, handleSubmit, formState: { errors, isSubmitting } } = useForm<CustomOrderInput, unknown, CustomOrderForm>({
     resolver: zodResolver(customOrderSchema),
@@ -27,8 +29,14 @@ export function CustomOrder() {
   });
 
   const submit = async (values: CustomOrderForm) => {
-    await api.post('/custom-orders', { ...values, referenceImage: referenceImage || preview || 'pending-upload' });
-    showToast('Custom artwork request sent');
+    if (!referenceImage) {
+      showToast('Upload a reference image first');
+      return;
+    }
+    const customOrder = await createCustomOrder({ ...values, referenceImage });
+    const session = await createPaymentSession({ customOrderId: customOrder._id });
+    showToast('Opening PayHere sandbox checkout');
+    submitPayhereSession(session);
   };
 
   return (
@@ -47,13 +55,19 @@ export function CustomOrder() {
         <label className="mb-5 grid cursor-pointer place-items-center rounded-lg border border-dashed border-gallery-red p-8 text-center">
           <UploadCloud className="mb-3 h-8 w-8 text-gallery-red" />
           <span className="font-bold">Upload reference image</span>
-          <input type="file" accept="image/*" className="sr-only" onChange={(event) => {
+          <input type="file" accept="image/*" className="sr-only" onChange={async (event) => {
             const file = event.target.files?.[0];
             if (!file) return;
-            setReferenceImage(file.name);
             setPreview(URL.createObjectURL(file));
+            setUploading(true);
+            try {
+              setReferenceImage(await uploadImage(file));
+            } finally {
+              setUploading(false);
+            }
           }} />
         </label>
+        {uploading && <p className="mb-4 text-sm font-semibold text-gallery-red">Uploading reference image...</p>}
         <label className="mb-4 block">
           <span className="mb-2 block text-sm font-bold">Art style</span>
           <Input {...register('artStyle')} />
@@ -69,7 +83,7 @@ export function CustomOrder() {
           <textarea {...register('notes')} className="min-h-36 w-full rounded-md border border-red-100 bg-white px-4 py-3 outline-none focus:border-gallery-red dark:border-white/10 dark:bg-zinc-900" placeholder="Size, spiritual symbols, colors, delivery deadline..." />
           {errors.notes && <p className="mt-1 text-sm font-semibold text-gallery-red">{errors.notes.message}</p>}
         </label>
-        <Button type="submit" disabled={isSubmitting} className="w-full">Submit custom request</Button>
+        <Button type="submit" disabled={isSubmitting || uploading} className="w-full">{isSubmitting ? 'Preparing payment...' : 'Submit and pay with PayHere'}</Button>
       </form>
     </section>
   );

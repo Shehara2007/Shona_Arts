@@ -1,7 +1,10 @@
 import { Mail, MapPin, Phone, Upload } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { useToast } from '../components/Toast';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
-import { updateQuantity } from '../redux/cartSlice';
+import { clearCart, updateQuantity } from '../redux/cartSlice';
+import { createOrder, createPaymentSession, fetchMyCustomOrders, fetchMyOrders, submitPayhereSession } from '../services/customerApi';
+import type { CustomOrder, Order } from '../utils/types';
 
 export function About() {
   return (
@@ -57,8 +60,33 @@ export function Profile() {
 
 export function Cart() {
   const dispatch = useAppDispatch();
+  const { showToast } = useToast();
   const items = useAppSelector((state) => state.cart.items);
+  const [shippingAddress, setShippingAddress] = useState('');
+  const [checkingOut, setCheckingOut] = useState(false);
   const total = items.reduce((sum, item) => sum + item.artwork.price * item.quantity, 0);
+
+  const checkout = async () => {
+    if (!items.length) {
+      showToast('Your cart is empty');
+      return;
+    }
+    if (!shippingAddress.trim()) {
+      showToast('Add a shipping address first');
+      return;
+    }
+    setCheckingOut(true);
+    try {
+      const order = await createOrder({ items, shippingAddress, totalPrice: total });
+      const session = await createPaymentSession({ orderId: order._id });
+      dispatch(clearCart());
+      showToast('Opening PayHere sandbox checkout');
+      submitPayhereSession(session);
+    } finally {
+      setCheckingOut(false);
+    }
+  };
+
   return (
     <section className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
       <h1 className="font-display text-5xl font-extrabold">Cart</h1>
@@ -82,7 +110,8 @@ export function Cart() {
       </div>
       <div className="mt-8 rounded-lg bg-gallery-rose p-6 dark:bg-white/10">
         <div className="flex items-center justify-between text-2xl font-extrabold"><span>Total</span><span>${total}</span></div>
-        <button type="button" className="mt-5 w-full rounded-md bg-gallery-red px-5 py-3 font-bold text-white">Checkout with PayHere</button>
+        <input value={shippingAddress} onChange={(event) => setShippingAddress(event.target.value)} placeholder="Shipping address" className="mt-5 w-full rounded-md border border-red-100 bg-white px-4 py-3 outline-none focus:border-gallery-red dark:border-white/10 dark:bg-zinc-900" />
+        <button type="button" onClick={checkout} disabled={checkingOut} className="mt-5 w-full rounded-md bg-gallery-red px-5 py-3 font-bold text-white disabled:opacity-60">{checkingOut ? 'Creating order...' : 'Checkout with PayHere'}</button>
       </div>
     </section>
   );
@@ -94,5 +123,73 @@ export function Wishlist() {
 }
 
 export function Orders() {
-  return <section className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8"><h1 className="font-display text-5xl font-extrabold">Order history</h1><p className="mt-4 text-zinc-500">Paid PayHere orders and commission statuses will appear here.</p></section>;
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [customOrders, setCustomOrders] = useState<CustomOrder[]>([]);
+  const { showToast } = useToast();
+
+  useEffect(() => {
+    void Promise.all([fetchMyOrders(), fetchMyCustomOrders()]).then(([orderData, customOrderData]) => {
+      setOrders(orderData);
+      setCustomOrders(customOrderData);
+    });
+  }, []);
+
+  return (
+    <section className="mx-auto max-w-5xl px-4 py-12 sm:px-6 lg:px-8">
+      <h1 className="font-display text-5xl font-extrabold">Order history</h1>
+      <div className="mt-8 space-y-4">
+        {orders.map((order) => (
+          <div key={order._id} className="rounded-lg bg-white p-5 dark:bg-zinc-900">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-extrabold">#{order._id.slice(-6).toUpperCase()}</p>
+                <p className="text-sm text-zinc-500">{order.items.length} items - {new Date(order.createdAt).toLocaleDateString()}</p>
+              </div>
+              <p className="font-extrabold">${order.totalPrice}</p>
+            </div>
+            <p className="mt-3 text-sm text-zinc-500">Payment: {order.paymentStatus} - Delivery: {order.orderStatus}</p>
+            {order.paymentStatus === 'pending' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const session = await createPaymentSession({ orderId: order._id });
+                  showToast('Opening PayHere sandbox checkout');
+                  submitPayhereSession(session);
+                }}
+                className="mt-4 rounded-md bg-gallery-red px-4 py-2 font-bold text-white"
+              >
+                Pay with PayHere
+              </button>
+            )}
+          </div>
+        ))}
+        {customOrders.map((order) => (
+          <div key={order._id} className="rounded-lg bg-white p-5 dark:bg-zinc-900">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="font-extrabold">Custom #{order._id.slice(-6).toUpperCase()}</p>
+                <p className="text-sm text-zinc-500">{order.artStyle} - {new Date(order.createdAt).toLocaleDateString()}</p>
+              </div>
+              <p className="font-extrabold">${order.budget}</p>
+            </div>
+            <p className="mt-3 text-sm text-zinc-500">Payment: {order.paymentStatus} - Custom order: {order.status}</p>
+            {order.paymentStatus === 'pending' && (
+              <button
+                type="button"
+                onClick={async () => {
+                  const session = await createPaymentSession({ customOrderId: order._id });
+                  showToast('Opening PayHere sandbox checkout');
+                  submitPayhereSession(session);
+                }}
+                className="mt-4 rounded-md bg-gallery-red px-4 py-2 font-bold text-white"
+              >
+                Pay custom order
+              </button>
+            )}
+          </div>
+        ))}
+        {!orders.length && !customOrders.length && <p className="text-zinc-500">Paid PayHere orders and commission statuses will appear here.</p>}
+      </div>
+    </section>
+  );
 }

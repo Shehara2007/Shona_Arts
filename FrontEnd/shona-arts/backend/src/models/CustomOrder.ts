@@ -7,7 +7,9 @@ const customOrderSchema = new Schema(
     artStyle: { type: String, required: true },
     notes: { type: String, required: true },
     budget: { type: Number, required: true, min: 0 },
+    paymentStatus: { type: String, enum: ['pending', 'paid', 'failed'], default: 'pending' },
     status: { type: String, enum: ['pending', 'approved', 'in-progress', 'completed', 'rejected'], default: 'pending' },
+    payhereOrderId: String,
   },
   { timestamps: true },
 );

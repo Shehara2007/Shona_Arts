@@ -29,22 +29,22 @@ cp backend/.env.example backend/.env
 npm run dev:all
 ```
 
-Frontend runs on `http://localhost:5173`. Backend runs on `http://localhost:5000`.
+Frontend runs on `http://localhost:5173`. Backend runs on `http://localhost:5001`.
 
 ## Environment Variables
 
 Frontend `.env`:
 
 ```text
-VITE_API_URL=http://localhost:5000/api
-VITE_SOCKET_URL=http://localhost:5000
+VITE_API_URL=http://localhost:5001/api
+VITE_SOCKET_URL=http://localhost:5001
 VITE_PAYHERE_MERCHANT_ID=your_payhere_merchant_id
 ```
 
 Backend `backend/.env`:
 
 ```text
-PORT=5000
+PORT=5001
 MONGO_URI=mongodb+srv://user:password@cluster.mongodb.net/shona-arts
 JWT_SECRET=replace_with_long_random_secret
 CLIENT_URL=http://localhost:5173

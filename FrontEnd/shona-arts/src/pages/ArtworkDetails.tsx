@@ -1,16 +1,26 @@
 import { Bot, Heart, ShoppingBag, Star, ZoomIn } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { ArtworkCard } from '../components/ArtworkCard';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { addToCart, toggleWishlist } from '../redux/cartSlice';
+import { fetchArtwork } from '../redux/artworkSlice';
 
 export function ArtworkDetails() {
   const { id } = useParams();
   const dispatch = useAppDispatch();
   const artworks = useAppSelector((state) => state.artworks.items);
-  const artwork = artworks.find((item) => item._id === id) ?? artworks[0];
+  const selected = useAppSelector((state) => state.artworks.selected);
+  const artwork = artworks.find((item) => item._id === id) ?? (selected?._id === id ? selected : undefined);
   const [zoomed, setZoomed] = useState(false);
+  useEffect(() => {
+    if (id && !artwork) void dispatch(fetchArtwork(id));
+  }, [artwork, dispatch, id]);
+
+  if (!artwork) {
+    return <section className="mx-auto max-w-7xl px-4 py-12 sm:px-6 lg:px-8 text-zinc-500">Loading artwork...</section>;
+  }
+
   const related = artworks.filter((item) => item._id !== artwork._id).slice(0, 3);
 
   return (

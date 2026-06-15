@@ -1,10 +1,14 @@
-import { lazy, Suspense } from 'react';
+import { lazy, Suspense, useEffect } from 'react';
 import { Route, Routes } from 'react-router-dom';
 import { LoadingScreen } from './components/LoadingScreen';
+import { useAppDispatch } from './hooks/redux';
 import { AdminLayout } from './layouts/AdminLayout';
 import { AppLayout } from './layouts/AppLayout';
 import { CustomerAccountLayout } from './layouts/CustomerAccountLayout';
+import { fetchArtworks } from './redux/artworkSlice';
+import { hydrateUser } from './redux/authSlice';
 import { ProtectedRoute } from './routes/ProtectedRoute';
+import { fetchMe } from './services/customerApi';
 
 const Home = lazy(() => import('./pages/Home').then((module) => ({ default: module.Home })));
 const Gallery = lazy(() => import('./pages/Gallery').then((module) => ({ default: module.Gallery })));
@@ -12,6 +16,7 @@ const ArtworkDetails = lazy(() => import('./pages/ArtworkDetails').then((module)
 const Auctions = lazy(() => import('./pages/Auctions').then((module) => ({ default: module.Auctions })));
 const Auth = lazy(() => import('./pages/Auth').then((module) => ({ default: module.Auth })));
 const CustomOrder = lazy(() => import('./pages/CustomOrder').then((module) => ({ default: module.CustomOrder })));
+const UserDashboard = lazy(() => import('./pages/UserDashboard').then((module) => ({ default: module.UserDashboard })));
 const AdminDashboard = lazy(() => import('./pages/AdminDashboard').then((module) => ({ default: module.AdminDashboard })));
 const About = lazy(() => import('./pages/SimplePages').then((module) => ({ default: module.About })));
 const Cart = lazy(() => import('./pages/SimplePages').then((module) => ({ default: module.Cart })));
@@ -39,6 +44,15 @@ const AdminCustomOrders = lazy(() => import('./pages/admin/AdminManagementPages'
 const AdminNotifications = lazy(() => import('./pages/admin/AdminManagementPages').then((module) => ({ default: module.AdminNotifications })));
 
 export default function App() {
+  const dispatch = useAppDispatch();
+
+  useEffect(() => {
+    void dispatch(fetchArtworks('limit=50'));
+    if (localStorage.getItem('shona_token')) {
+      void fetchMe().then((user) => dispatch(hydrateUser(user))).catch(() => undefined);
+    }
+  }, [dispatch]);
+
   return (
     <Suspense fallback={<LoadingScreen />}>
       <Routes>
@@ -53,7 +67,8 @@ export default function App() {
           <Route path="contact" element={<Contact />} />
           <Route path="custom-order" element={<CustomOrder />} />
           <Route path="login" element={<Auth />} />
-          <Route element={<ProtectedRoute />}>
+          <Route element={<ProtectedRoute role="customer" />}>
+            <Route path="user" element={<UserDashboard />} />
             <Route path="orders" element={<Orders />} />
             <Route path="profile" element={<Profile />} />
             <Route path="account" element={<CustomerAccountLayout />}>

@@ -17,8 +17,9 @@ export async function protect(req: Request, res: Response, next: NextFunction) {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET ?? 'dev-secret') as { id: string; role: 'customer' | 'admin' };
-    const user = await User.findById(decoded.id).select('_id role');
+    const user = await User.findById(decoded.id).select('_id role blocked');
     if (!user) return res.status(401).json({ message: 'User no longer exists' });
+    if (user.blocked) return res.status(403).json({ message: 'User is blocked' });
     req.user = { id: decoded.id, role: decoded.role };
     next();
   } catch {

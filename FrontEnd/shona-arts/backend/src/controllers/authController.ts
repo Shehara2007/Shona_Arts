@@ -4,10 +4,11 @@ import { asyncHandler } from '../utils/asyncHandler.js';
 import { signToken } from '../utils/token.js';
 import { User } from '../models/User.js';
 
-const publicUser = (user: { _id: unknown; name: string; email: string; role: string; wishlist: unknown[] }) => ({
+const publicUser = (user: { _id: unknown; name: string; email: string; avatar?: string; role: string; wishlist: unknown[] }) => ({
   _id: user._id,
   name: user.name,
   email: user.email,
+  avatar: user.avatar,
   role: user.role,
   wishlist: user.wishlist,
 });
@@ -21,6 +22,9 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
   const user = await User.findOne({ email: req.body.email }).select('+password');
   if (!user || !(await user.comparePassword(req.body.password))) {
     return res.status(401).json({ message: 'Invalid email or password' });
+  }
+  if (user.blocked) {
+    return res.status(403).json({ message: 'Your account is blocked' });
   }
   res.json({ user: publicUser(user), token: signToken(user) });
 });
@@ -37,5 +41,17 @@ export const googleLogin = asyncHandler(async (req: Request, res: Response) => {
 
 export const me = asyncHandler(async (req: Request, res: Response) => {
   const user = await User.findById(req.user?.id);
-  res.json(user);
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  res.json(publicUser(user));
+});
+
+export const updateMe = asyncHandler(async (req: Request, res: Response) => {
+  const updates: Record<string, string> = {};
+  if (typeof req.body.name === 'string') updates.name = req.body.name;
+  if (typeof req.body.email === 'string') updates.email = req.body.email;
+  if (typeof req.body.avatar === 'string') updates.avatar = req.body.avatar;
+
+  const user = await User.findByIdAndUpdate(req.user?.id, updates, { new: true, runValidators: true });
+  if (!user) return res.status(404).json({ message: 'User not found' });
+  res.json(publicUser(user));
 });

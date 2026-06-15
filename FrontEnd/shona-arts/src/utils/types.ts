@@ -54,9 +54,12 @@ export interface Auction {
   artworkId: Artwork;
   startingPrice: number;
   highestBid: number;
+  currentWinner?: string | { _id: string; name: string; email: string };
   endTime: string;
-  winner?: string;
+  winner?: string | { _id: string; name: string; email: string };
+  paymentStatus?: 'pending' | 'paid' | 'failed';
   status: 'draft' | 'live' | 'closed';
+  bidHistory?: Bid[];
 }
 
 export interface Order {
@@ -68,6 +71,38 @@ export interface Order {
   totalPrice: number;
   orderStatus: 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled';
   createdAt: string;
+}
+
+export interface CustomOrder {
+  _id: string;
+  userId: string;
+  referenceImage: string;
+  artStyle: string;
+  notes: string;
+  budget: number;
+  paymentStatus: 'pending' | 'paid' | 'failed';
+  status: 'pending' | 'approved' | 'in-progress' | 'completed' | 'rejected';
+  createdAt: string;
+}
+
+export interface PayhereSession {
+  action_url: string;
+  merchant_id: string;
+  return_url: string;
+  cancel_url: string;
+  notify_url?: string;
+  order_id: string;
+  items: string;
+  amount: string;
+  currency: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  address: string;
+  city: string;
+  country: string;
+  hash: string;
 }
 
 export interface Notification {

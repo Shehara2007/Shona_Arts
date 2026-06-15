@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useForm } from 'react-hook-form';
 import { useNavigate } from 'react-router-dom';
 import { z } from 'zod';
@@ -22,6 +22,7 @@ export function Auth() {
   const dispatch = useAppDispatch();
   const navigate = useNavigate();
   const loading = useAppSelector((state) => state.auth.loading);
+  const user = useAppSelector((state) => state.auth.user);
   const { showToast } = useToast();
   const { register: field, handleSubmit, formState: { errors } } = useForm<AuthForm>({
     resolver: zodResolver(authSchema),
@@ -30,10 +31,18 @@ export function Auth() {
 
   const submit = async (form: AuthForm) => {
     const action = mode === 'login' ? login({ email: form.email, password: form.password }) : register({ name: form.name || 'Shona Collector', email: form.email, password: form.password });
-    await dispatch(action);
-    showToast(mode === 'login' ? 'Welcome back to Shona Arts' : 'Account created successfully');
-    navigate('/');
+    const result = await dispatch(action);
+    if (login.fulfilled.match(result) || register.fulfilled.match(result)) {
+      showToast(mode === 'login' ? 'Welcome back to Shona Arts' : 'Account created successfully');
+      navigate(result.payload.user.role === 'admin' ? '/admin' : '/user');
+      return;
+    }
+    showToast('Login failed. Please check your details and try again.');
   };
+
+  useEffect(() => {
+    if (user) navigate(user.role === 'admin' ? '/admin' : '/user', { replace: true });
+  }, [navigate, user]);
 
   return (
     <section className="mx-auto grid min-h-[calc(100vh-160px)] max-w-6xl items-center gap-8 px-4 py-12 sm:px-6 lg:grid-cols-2 lg:px-8">

@@ -37,6 +37,11 @@ export function AppLayout() {
                 <LayoutDashboard className="h-4 w-4" /> Admin
               </NavLink>
             )}
+            {user?.role === 'customer' && (
+              <NavLink to="/user" className="inline-flex items-center gap-2 text-sm font-semibold text-gallery-red">
+                <LayoutDashboard className="h-4 w-4" /> User
+              </NavLink>
+            )}
           </nav>
           <div className="hidden items-center gap-2 sm:flex">
             <button type="button" onClick={toggleTheme} className="rounded-full border border-red-100 p-2 dark:border-white/10" aria-label="Toggle theme">
@@ -50,7 +55,7 @@ export function AppLayout() {
               <ShoppingBag className="h-5 w-5" />
               {cartCount > 0 && <span className="absolute -right-1 -top-1 rounded-full bg-gallery-red px-1.5 text-xs text-white">{cartCount}</span>}
             </Link>
-            <Link to={user ? '/account/profile' : '/login'} className="rounded-full bg-gallery-red p-2 text-white" aria-label="Profile">
+            <Link to={user ? (user.role === 'admin' ? '/admin' : '/user') : '/login'} className="rounded-full bg-gallery-red p-2 text-white" aria-label="Profile">
               <UserRound className="h-5 w-5" />
             </Link>
             {user && (
@@ -66,7 +71,7 @@ export function AppLayout() {
         {open && (
           <div className="grid gap-2 border-t border-red-100 bg-white px-4 py-4 dark:border-white/10 dark:bg-zinc-950 lg:hidden">
             {links.map(([label, href]) => <NavLink key={href} to={href} onClick={() => setOpen(false)} className="rounded-md px-3 py-2 font-semibold">{label}</NavLink>)}
-            <Link to={user ? '/account/profile' : '/login'} className="rounded-md bg-gallery-red px-3 py-2 font-semibold text-white">Account</Link>
+            <Link to={user ? (user.role === 'admin' ? '/admin' : '/user') : '/login'} className="rounded-md bg-gallery-red px-3 py-2 font-semibold text-white">Account</Link>
           </div>
         )}
       </header>
