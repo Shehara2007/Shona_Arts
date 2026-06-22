@@ -1,5 +1,6 @@
 import { Bell, Camera, CheckCircle2, CreditCard, ImageUp, PackageSearch, Star, UploadCloud } from 'lucide-react';
 import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { ArtworkCard } from '../../components/ArtworkCard';
 import { useToast } from '../../components/Toast';
 import { Button } from '../../components/ui/button';
@@ -17,6 +18,37 @@ function CustomerHeader({ eyebrow, title }: { eyebrow: string; title: string }) 
       <h1 className="font-display text-4xl font-extrabold">{title}</h1>
     </div>
   );
+}
+
+const orderTrackingSteps = ['Placed', 'Paid', 'Processing', 'Packed', 'Shipped', 'Delivered'];
+const customTrackingSteps = ['Requested', 'Paid', 'Approved', 'In progress', 'Completed'];
+
+function orderStepIndex(order: Order) {
+  if (order.orderStatus === 'cancelled') return 0;
+  if (order.orderStatus === 'delivered') return 5;
+  if (order.orderStatus === 'shipped') return 4;
+  if (order.orderStatus === 'packed') return 3;
+  if (order.paymentStatus === 'paid') return 2;
+  return 0;
+}
+
+function customStepIndex(order: CustomOrder) {
+  if (order.status === 'rejected') return 0;
+  if (order.status === 'completed') return 4;
+  if (order.status === 'in-progress') return 3;
+  if (order.status === 'approved') return 2;
+  if (order.paymentStatus === 'paid') return 1;
+  return 0;
+}
+
+function StatusPill({ label, tone = 'neutral' }: { label: ReactNode; tone?: 'success' | 'warning' | 'danger' | 'neutral' }) {
+  const classes = {
+    success: 'bg-emerald-500/10 text-emerald-600',
+    warning: 'bg-amber-500/10 text-amber-600',
+    danger: 'bg-red-500/10 text-red-600',
+    neutral: 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-300',
+  };
+  return <span className={`inline-flex w-fit items-center gap-2 rounded-full px-3 py-1 text-sm font-bold ${classes[tone]}`}>{label}</span>;
 }
 
 export function CustomerProfile() {
@@ -64,7 +96,6 @@ export function CustomerOrders() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [customOrders, setCustomOrders] = useState<CustomOrder[]>([]);
   const { showToast } = useToast();
-  const timeline = ['Order placed', 'Payment confirmed', 'Packed', 'Shipped', 'Delivered'];
 
   useEffect(() => {
     void Promise.all([fetchMyOrders(), fetchMyCustomOrders()]).then(([orderData, customOrderData]) => {
@@ -73,14 +104,6 @@ export function CustomerOrders() {
     });
   }, []);
 
-  const activeStep = (order: Order) => {
-    if (order.orderStatus === 'delivered') return 4;
-    if (order.orderStatus === 'shipped') return 3;
-    if (order.orderStatus === 'packed') return 2;
-    if (order.paymentStatus === 'paid') return 1;
-    return 0;
-  };
-
   return (
     <section>
       <CustomerHeader eyebrow="Orders" title="Track order history and delivery" />
@@ -88,25 +111,37 @@ export function CustomerOrders() {
         {orders.map((order) => (
           <Card key={order._id} className="p-5">
             <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div><h2 className="text-xl font-extrabold">#{order._id.slice(-6).toUpperCase()}</h2><p className="text-zinc-500">${order.totalPrice} - {order.items.length} items</p></div>
-              <span className="inline-flex w-fit items-center gap-2 rounded-full bg-emerald-500/10 px-3 py-1 font-bold text-emerald-600"><PackageSearch className="h-4 w-4" /> {order.orderStatus}</span>
+              <div>
+                <h2 className="text-xl font-extrabold">#{order._id.slice(-6).toUpperCase()}</h2>
+                <p className="text-zinc-500">${order.totalPrice} - {order.items.length} items - {order.shippingAddress}</p>
+                <p className="mt-1 text-sm text-zinc-500">Last update: {new Date(order.updatedAt ?? order.createdAt).toLocaleString()}</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <StatusPill label={`Payment: ${order.paymentStatus}`} tone={order.paymentStatus === 'paid' ? 'success' : order.paymentStatus === 'failed' ? 'danger' : 'warning'} />
+                <StatusPill label={<><PackageSearch className="h-4 w-4" /> {order.orderStatus}</>} tone={order.orderStatus === 'delivered' ? 'success' : order.orderStatus === 'cancelled' ? 'danger' : 'neutral'} />
+              </div>
             </div>
-            <div className="mt-5 grid gap-2 md:grid-cols-5">
-              {timeline.map((step, stepIndex) => (
-                <div key={step} className={`rounded-md p-3 text-sm font-bold ${stepIndex <= activeStep(order) ? 'bg-gallery-red text-white' : 'bg-gallery-rose text-gallery-ink dark:bg-white/10 dark:text-white'}`}>{step}</div>
+            <div className="mt-5 grid gap-2 md:grid-cols-6">
+              {orderTrackingSteps.map((step, stepIndex) => (
+                <div key={step} className={`rounded-md p-3 text-sm font-bold ${stepIndex <= orderStepIndex(order) && order.orderStatus !== 'cancelled' ? 'bg-gallery-red text-white' : 'bg-gallery-rose text-gallery-ink dark:bg-white/10 dark:text-white'}`}>{step}</div>
               ))}
             </div>
+            {order.orderStatus === 'cancelled' && <p className="mt-3 font-semibold text-red-600">This order was cancelled.</p>}
           </Card>
         ))}
         {customOrders.map((order) => (
           <Card key={order._id} className="p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <h2 className="text-xl font-extrabold">Custom #{order._id.slice(-6).toUpperCase()}</h2>
                 <p className="text-zinc-500">{order.artStyle} - ${order.budget}</p>
-                <p className="mt-1 text-sm text-zinc-500">Status: {order.status} - Payment: {order.paymentStatus}</p>
+                <p className="mt-1 text-sm text-zinc-500">Last update: {new Date(order.updatedAt ?? order.createdAt).toLocaleString()}</p>
               </div>
-              {order.paymentStatus === 'pending' && (
+              <div className="flex flex-wrap gap-2">
+                <StatusPill label={`Payment: ${order.paymentStatus}`} tone={order.paymentStatus === 'paid' ? 'success' : order.paymentStatus === 'failed' ? 'danger' : 'warning'} />
+                <StatusPill label={`Custom: ${order.status}`} tone={order.status === 'completed' ? 'success' : order.status === 'rejected' ? 'danger' : 'neutral'} />
+              </div>
+              {order.paymentStatus === 'pending' && order.status !== 'rejected' && (
                 <Button
                   onClick={async () => {
                     const session = await createPaymentSession({ customOrderId: order._id });
@@ -118,6 +153,12 @@ export function CustomerOrders() {
                 </Button>
               )}
             </div>
+            <div className="mt-5 grid gap-2 md:grid-cols-5">
+              {customTrackingSteps.map((step, stepIndex) => (
+                <div key={step} className={`rounded-md p-3 text-sm font-bold ${stepIndex <= customStepIndex(order) && order.status !== 'rejected' ? 'bg-gallery-red text-white' : 'bg-gallery-rose text-gallery-ink dark:bg-white/10 dark:text-white'}`}>{step}</div>
+              ))}
+            </div>
+            {order.status === 'rejected' && <p className="mt-3 font-semibold text-red-600">This custom order was rejected.</p>}
           </Card>
         ))}
         {!orders.length && !customOrders.length && <Card className="p-5 text-zinc-500">No orders yet.</Card>}

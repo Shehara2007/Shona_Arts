@@ -71,6 +71,7 @@ export interface Order {
   totalPrice: number;
   orderStatus: 'processing' | 'packed' | 'shipped' | 'delivered' | 'cancelled';
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface CustomOrder {
@@ -83,6 +84,7 @@ export interface CustomOrder {
   paymentStatus: 'pending' | 'paid' | 'failed';
   status: 'pending' | 'approved' | 'in-progress' | 'completed' | 'rejected';
   createdAt: string;
+  updatedAt?: string;
 }
 
 export interface PayhereSession {

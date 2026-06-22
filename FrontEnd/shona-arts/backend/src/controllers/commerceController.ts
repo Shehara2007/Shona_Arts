@@ -15,6 +15,40 @@ const payhereOrderId = (type: 'order' | 'custom-order' | 'auction', id: string) 
   return `AUCTION-${id}`;
 };
 
+const hasPayhereConfig = () => {
+  const values = [process.env.PAYHERE_MERCHANT_ID, process.env.PAYHERE_MERCHANT_SECRET];
+  return values.every((value) => value && !value.startsWith('your-'));
+};
+
+const payhereActionUrl = () => (
+  process.env.PAYHERE_SANDBOX === 'false'
+    ? 'https://www.payhere.lk/pay/checkout'
+    : 'https://sandbox.payhere.lk/pay/checkout'
+);
+
+const apiPublicUrl = () => process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT ?? 5001}`;
+
+const hashedMerchantSecret = () => crypto
+  .createHash('md5')
+  .update(process.env.PAYHERE_MERCHANT_SECRET ?? '')
+  .digest('hex')
+  .toUpperCase();
+
+const verifyPayhereSignature = (body: Record<string, unknown>) => {
+  const merchantId = String(body.merchant_id || '');
+  const orderId = String(body.order_id || '');
+  const amount = String(body.payhere_amount || '');
+  const currency = String(body.payhere_currency || '');
+  const statusCode = String(body.status_code || '');
+  const md5sig = String(body.md5sig || '').toUpperCase();
+  const localSig = crypto
+    .createHash('md5')
+    .update(`${merchantId}${orderId}${amount}${currency}${statusCode}${hashedMerchantSecret()}`)
+    .digest('hex')
+    .toUpperCase();
+  return Boolean(md5sig) && md5sig === localSig;
+};
+
 const buildPayhereSession = async ({
   type,
   id,
@@ -32,26 +66,29 @@ const buildPayhereSession = async ({
   returnPath: string;
   cancelPath: string;
 }) => {
+  if (!hasPayhereConfig()) {
+    throw new Error('PayHere merchant id and secret are not configured');
+  }
+
   const merchantId = process.env.PAYHERE_MERCHANT_ID ?? '';
-  const secret = process.env.PAYHERE_MERCHANT_SECRET ?? '';
   const currency = 'LKR';
   const formattedAmount = amount.toFixed(2);
   const orderId = payhereOrderId(type, id);
-  const hashedSecret = crypto.createHash('md5').update(secret).digest('hex').toUpperCase();
   const hash = crypto
     .createHash('md5')
-    .update(`${merchantId}${orderId}${formattedAmount}${currency}${hashedSecret}`)
+    .update(`${merchantId}${orderId}${formattedAmount}${currency}${hashedMerchantSecret()}`)
     .digest('hex')
     .toUpperCase();
   const [firstName, ...rest] = (user?.name || 'Shona Customer').split(' ');
+  const notifyUrl = process.env.PAYHERE_NOTIFY_URL || `${apiPublicUrl()}/api/payments/notify`;
 
   return {
-    sandbox: true,
-    action_url: 'https://sandbox.payhere.lk/pay/checkout',
+    sandbox: process.env.PAYHERE_SANDBOX !== 'false',
+    action_url: payhereActionUrl(),
     merchant_id: merchantId,
     return_url: `${process.env.CLIENT_URL}${returnPath}`,
     cancel_url: `${process.env.CLIENT_URL}${cancelPath}`,
-    notify_url: process.env.PAYHERE_NOTIFY_URL,
+    notify_url: notifyUrl,
     order_id: orderId,
     items,
     amount: formattedAmount,
@@ -68,7 +105,24 @@ const buildPayhereSession = async ({
 };
 
 export const createOrder = asyncHandler(async (req: Request, res: Response) => {
-  const order = await Order.create({ ...req.body, userId: req.user?.id, paymentStatus: 'pending' });
+  const { items = [], shippingAddress } = req.body as { items?: Array<{ artwork: string; quantity: number }>; shippingAddress?: string };
+  if (!shippingAddress || !items.length) {
+    res.status(400).json({ message: 'Shipping address and order items are required' });
+    return;
+  }
+
+  const paintingIds = items.map((item) => item.artwork);
+  const paintings = await Painting.find({ _id: { $in: paintingIds } });
+  const orderItems = items.map((item) => {
+    const painting = paintings.find((entry) => String(entry._id) === item.artwork);
+    if (!painting) throw new Error('One or more artworks are unavailable');
+    const quantity = Math.max(1, Number(item.quantity) || 1);
+    if (painting.stock < quantity) throw new Error(`${painting.title} only has ${painting.stock} in stock`);
+    return { artwork: painting._id, quantity, price: painting.price };
+  });
+  const totalPrice = orderItems.reduce((sum, item) => sum + item.price * item.quantity, 0);
+
+  const order = await Order.create({ userId: req.user?.id, items: orderItems, shippingAddress, totalPrice, paymentStatus: 'pending' });
   order.payhereOrderId = payhereOrderId('order', String(order._id));
   await order.save();
   if (req.user?.id) await notifyUser(req.user.id, 'Order created', 'Your artwork order is waiting for payment confirmation.');
@@ -151,6 +205,11 @@ export const createPaymentSession = asyncHandler(async (req: Request, res: Respo
 });
 
 export const payhereNotify = asyncHandler(async (req: Request, res: Response) => {
+  if (!verifyPayhereSignature(req.body)) {
+    res.status(400).json({ message: 'Invalid PayHere signature' });
+    return;
+  }
+
   const orderId = String(req.body.order_id || '');
   const paymentStatus = req.body.status_code === '2' ? 'paid' : 'failed';
   if (orderId.startsWith('CUSTOM-')) {
@@ -158,7 +217,14 @@ export const payhereNotify = asyncHandler(async (req: Request, res: Response) =>
   } else if (orderId.startsWith('AUCTION-')) {
     await Auction.findByIdAndUpdate(orderId.replace('AUCTION-', ''), { paymentStatus });
   } else {
-    await Order.findByIdAndUpdate(orderId.replace('ORDER-', ''), { paymentStatus });
+    const order = await Order.findById(orderId.replace('ORDER-', ''));
+    if (order && order.paymentStatus !== 'paid' && paymentStatus === 'paid') {
+      await Promise.all(order.items.map((item) => Painting.findByIdAndUpdate(item.artwork, { $inc: { stock: -item.quantity, popularity: item.quantity } })));
+    }
+    if (order) {
+      order.paymentStatus = paymentStatus;
+      await order.save();
+    }
   }
   res.sendStatus(200);
 });

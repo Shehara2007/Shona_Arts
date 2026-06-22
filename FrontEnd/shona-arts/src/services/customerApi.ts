@@ -50,7 +50,7 @@ export function submitPayhereSession(session: PayhereSession) {
   form.action = session.action_url;
 
   Object.entries(session).forEach(([key, value]) => {
-    if (key === 'action_url' || value === undefined || value === '') return;
+    if (key === 'action_url' || key === 'sandbox' || value === undefined || value === '') return;
     const input = document.createElement('input');
     input.type = 'hidden';
     input.name = key;

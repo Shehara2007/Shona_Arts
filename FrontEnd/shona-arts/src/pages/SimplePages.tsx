@@ -1,8 +1,8 @@
-import { Mail, MapPin, Phone, Upload } from 'lucide-react';
+import { Mail, MapPin, Phone, Trash2, Upload } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { useToast } from '../components/Toast';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
-import { clearCart, updateQuantity } from '../redux/cartSlice';
+import { clearCart, removeFromCart, updateQuantity } from '../redux/cartSlice';
 import { createOrder, createPaymentSession, fetchMyCustomOrders, fetchMyOrders, submitPayhereSession } from '../services/customerApi';
 import type { CustomOrder, Order } from '../utils/types';
 
@@ -62,6 +62,7 @@ export function Cart() {
   const dispatch = useAppDispatch();
   const { showToast } = useToast();
   const items = useAppSelector((state) => state.cart.items);
+  const user = useAppSelector((state) => state.auth.user);
   const [shippingAddress, setShippingAddress] = useState('');
   const [checkingOut, setCheckingOut] = useState(false);
   const total = items.reduce((sum, item) => sum + item.artwork.price * item.quantity, 0);
@@ -69,6 +70,10 @@ export function Cart() {
   const checkout = async () => {
     if (!items.length) {
       showToast('Your cart is empty');
+      return;
+    }
+    if (!user) {
+      showToast('Please log in before checkout');
       return;
     }
     if (!shippingAddress.trim()) {
@@ -92,11 +97,12 @@ export function Cart() {
       <h1 className="font-display text-5xl font-extrabold">Cart</h1>
       <div className="mt-8 space-y-4">
         {items.map((item) => (
-          <div key={item.artwork._id} className="flex items-center justify-between rounded-lg bg-white p-4 dark:bg-zinc-900">
+          <div key={item.artwork._id} className="flex flex-col gap-4 rounded-lg bg-white p-4 dark:bg-zinc-900 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-4">
               <img src={item.artwork.image} alt={item.artwork.title} className="h-16 w-16 rounded-md object-cover" />
               <div>
                 <p className="font-bold">{item.artwork.title}</p>
+                <p className="text-sm text-zinc-500">Stock available: {item.artwork.stock}</p>
                 <div className="mt-2 flex items-center gap-2">
                   <button type="button" onClick={() => dispatch(updateQuantity({ id: item.artwork._id, quantity: item.quantity - 1 }))} className="h-8 w-8 rounded bg-gallery-rose font-bold text-gallery-red">-</button>
                   <span className="w-8 text-center font-bold">{item.quantity}</span>
@@ -104,9 +110,15 @@ export function Cart() {
                 </div>
               </div>
             </div>
-            <p className="font-extrabold">${item.artwork.price * item.quantity}</p>
+            <div className="flex items-center justify-between gap-4 sm:justify-end">
+              <p className="font-extrabold">${item.artwork.price * item.quantity}</p>
+              <button type="button" onClick={() => dispatch(removeFromCart(item.artwork._id))} className="rounded-md border border-red-200 p-2 text-gallery-red" aria-label="Remove from cart">
+                <Trash2 className="h-5 w-5" />
+              </button>
+            </div>
           </div>
         ))}
+        {!items.length && <p className="rounded-lg bg-white p-5 text-zinc-500 dark:bg-zinc-900">Your cart is empty.</p>}
       </div>
       <div className="mt-8 rounded-lg bg-gallery-rose p-6 dark:bg-white/10">
         <div className="flex items-center justify-between text-2xl font-extrabold"><span>Total</span><span>${total}</span></div>

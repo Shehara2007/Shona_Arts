@@ -6,6 +6,7 @@ import { Review } from '../models/Review.js';
 import { CustomOrder } from '../models/CustomOrder.js';
 import { Notification } from '../models/Notification.js';
 import { Painting } from '../models/Painting.js';
+import { notifyUser } from '../services/notificationService.js';
 
 const allowedRoles = ['customer', 'admin'] as const;
 const allowedBlockStates = [true, false] as const;
@@ -114,6 +115,12 @@ export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
     updates.orderStatus = orderStatus;
   }
 
+  const existingOrder = await Order.findById(req.params.id).select('userId paymentStatus orderStatus');
+  if (!existingOrder) {
+    res.status(404).json({ message: 'Order not found' });
+    return;
+  }
+
   const order = await Order.findByIdAndUpdate(req.params.id, updates, { new: true, runValidators: true })
     .populate('userId', 'name email role avatar')
     .populate('items.artwork', 'title image price category');
@@ -121,6 +128,13 @@ export const updateOrder = asyncHandler(async (req: Request, res: Response) => {
   if (!order) {
     res.status(404).json({ message: 'Order not found' });
     return;
+  }
+
+  if (orderStatus && orderStatus !== existingOrder.orderStatus) {
+    await notifyUser(String(existingOrder.userId), 'Order tracking updated', `Your order is now ${orderStatus}.`);
+  }
+  if (paymentStatus && paymentStatus !== existingOrder.paymentStatus) {
+    await notifyUser(String(existingOrder.userId), 'Payment status updated', `Your order payment status is now ${paymentStatus}.`);
   }
 
   res.json(order);
@@ -158,6 +172,12 @@ export const updateCustomOrder = asyncHandler(async (req: Request, res: Response
     return;
   }
 
+  const existingCustomOrder = await CustomOrder.findById(req.params.id).select('userId status');
+  if (!existingCustomOrder) {
+    res.status(404).json({ message: 'Custom order not found' });
+    return;
+  }
+
   const customOrder = await CustomOrder.findByIdAndUpdate(req.params.id, status ? { status } : {}, { new: true, runValidators: true }).populate(
     'userId',
     'name email role avatar',
@@ -166,6 +186,10 @@ export const updateCustomOrder = asyncHandler(async (req: Request, res: Response
   if (!customOrder) {
     res.status(404).json({ message: 'Custom order not found' });
     return;
+  }
+
+  if (status && status !== existingCustomOrder.status) {
+    await notifyUser(String(existingCustomOrder.userId), 'Custom artwork tracking updated', `Your custom artwork request is now ${status}.`);
   }
 
   res.json(customOrder);

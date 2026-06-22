@@ -4,10 +4,14 @@ import { motion } from 'framer-motion';
 import type { Artwork } from '../utils/types';
 import { useAppDispatch, useAppSelector } from '../hooks/redux';
 import { addToCart, toggleWishlist } from '../redux/cartSlice';
+import { useToast } from './Toast';
 
 export function ArtworkCard({ artwork }: { artwork: Artwork }) {
   const dispatch = useAppDispatch();
+  const { showToast } = useToast();
   const wished = useAppSelector((state) => state.cart.wishlist.some((item) => item._id === artwork._id));
+  const inCart = useAppSelector((state) => state.cart.items.find((item) => item.artwork._id === artwork._id)?.quantity ?? 0);
+  const canAdd = artwork.stock > 0 && inCart < artwork.stock;
 
   return (
     <motion.article
@@ -44,10 +48,18 @@ export function ArtworkCard({ artwork }: { artwork: Artwork }) {
         </div>
         <button
           type="button"
-          onClick={() => dispatch(addToCart(artwork))}
-          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gallery-red px-4 py-3 font-semibold text-white shadow-lg shadow-red-500/20 transition hover:bg-red-700"
+          onClick={() => {
+            if (!canAdd) {
+              showToast(artwork.stock <= 0 ? 'This artwork is out of stock' : 'All available stock is already in your cart');
+              return;
+            }
+            dispatch(addToCart(artwork));
+            showToast('Added to cart');
+          }}
+          disabled={!canAdd}
+          className="inline-flex w-full items-center justify-center gap-2 rounded-md bg-gallery-red px-4 py-3 font-semibold text-white shadow-lg shadow-red-500/20 transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
         >
-          <ShoppingBag className="h-5 w-5" /> Add to cart
+          <ShoppingBag className="h-5 w-5" /> {artwork.stock <= 0 ? 'Out of stock' : 'Add to cart'}
         </button>
       </div>
     </motion.article>
